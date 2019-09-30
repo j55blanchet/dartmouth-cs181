@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>blanchet_cs181_homework1</name>
+  <name>homework1</name>
   <version>0.0.0</version>
-  <description>The blanchet_cs181_homework1 package</description>
+  <description>The blanchet cs181 homework1 package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/blanchet_cs181_homework1</url> -->
+  <!-- <url type="website">http://wiki.ros.org/homework1</url> -->
 
   <author email="julien.b.blanchet.gr@dartmouth.edu">Julien Blanchet</author>
 
@@ -48,12 +48,16 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>turtlesim</build_depend>
+  <build_depend>roslib</build_depend>
   <build_export_depend>geometry_msgs</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>turtlesim</build_export_depend>
+  <build_export_depend>roslib</build_export_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>turtlesim</exec_depend>
+  <exec_depend>roslib</exec_depend>
+  
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
