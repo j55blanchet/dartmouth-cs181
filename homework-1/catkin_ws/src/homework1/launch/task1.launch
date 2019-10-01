@@ -2,7 +2,7 @@
     <!-- Turtlesim Node-->
     <node pkg="turtlesim" type="turtlesim_node" name="sim"/>
 
-    <node name="task1_driver" pkg="blanchet_cs181_homework1" type="task1.py" respawn="false" output="screen" >
-      <param name="radius" type="number" value="2" />
+    <node name="homework1_driver" pkg="homework1" type="task1.py" respawn="false" output="screen" >
+      <param name="radius" type="double" value="2" />
     </node>
   </launch>

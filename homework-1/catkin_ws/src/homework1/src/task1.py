@@ -7,87 +7,89 @@ import sys
 import math
 
 import rospy
-import roslib
-from geometry_msgs.msg import Twist, Vector3
+from geometry_msgs.msg import Twist, Point
 from turtlesim.msg import Pose
 
-####  Task: (text copied from prompt)
-#
-# Write a ROS node that will drive the robot to draw a simplified "D" represented as an 
-# isosceles trapezoid. The robot starts at the center of the longer base, with the robot 
-# local frame x-axis perpendicular to it and the vertices of the shorter base vertices 
-# are determined by the vectors of radius r and angle +/45 degrees. For example, in the 
-# figure below, the robot is at (5.5,5.5) m, with theta=0, and the radius is 2 m. 
-#
-ANGLE_THRESHOLD = math.pi / 360
+# Threshold for robot to consider itself as facing the next target point
+ANGLE_THRESHOLD = math.pi / 720
+
+# Threshold for robot to consider itself as standing on a point
+DISTANCE_THRESHOLD = 0.02
 
 cur_pose = None
-first_pose = None
 target_points = []     # The target points of the trapazoid, in the reference frame of the original position
 
-# utility function taken from https://stackoverflow.com/questions/57739846/is-there-a-processing-map-equivalent-for-python
-def map_range(value, start1, stop1, start2, stop2):
-   return (value - start1) / (stop1 - start1) * (stop2 - start2) + start2
-
-def constrain(value, min, max):
-    return  min if value < min else (max if value > max else value) 
-
+# Starts the node and processes the parameter
 def init():
     global target_points
-
-    # Parse arguments (search for radius)
-    print('Number of arguments:', len(sys.argv), 'arguments.')
-    print('Argument List:', str(sys.argv))
-    
-    if len(sys.argv) != 2:
-        sys.stderr.write("Error: expecting one argument for the radius (in meters) \n")
-        exit(-1)
-    
-    trapazoid_radius = float(sys.argv[1])
-    target_points = [
-        Vector3(0, -trapazoid_radius, 0), # bottom-left
-        Vector3(trapazoid_radius / math.sqrt(2), 
-                -trapazoid_radius / math.sqrt(2), 
-                0), # bottom-right
-        Vector3(trapazoid_radius / math.sqrt(2), 
-                trapazoid_radius / math.sqrt(2), 
-                0),# top-right
-        Vector3(0, trapazoid_radius, 0)# top-left
-    ]
-    print("Target points: ", target_points)
-
     rospy.init_node("homework1_driver")
     
-def pose_callback(pose):
-    br = tf.TransformBroadcaster()
+    # Get trapazoid radius based off of launch parameter
+    trapazoid_radius = float(rospy.get_param('~radius'))
+    print("Trapazoid radius: %s" % trapazoid_radius)
     
-    global cur_pose, first_pose
+    # Compute points of trapazoid, relative to (0, 0)
+    #    - The points will be adjusted to take into account
+    #      the initial position of the robot when the first
+    #      pose message is received
+    target_points = [
+        Point(0, -trapazoid_radius, 0), # bottom-left
+        Point(trapazoid_radius / math.sqrt(2), 
+                -trapazoid_radius / math.sqrt(2), 
+                0), # bottom-right
+        Point(trapazoid_radius / math.sqrt(2), 
+                trapazoid_radius / math.sqrt(2), 
+                0),# top-right
+        Point(0, trapazoid_radius, 0),# top-left
+        Point(0, 0, 0) # original position
+    ]
+    print("Target points (relative to 0, 0): ", target_points)
+
+# Called when we receive an updated location from turtle simulator
+def pose_callback(pose):
+    global cur_pose
+
+    # if this is the first pose update we've receieved, update the 
+    # locations of all target points
+    if cur_pose is None:    
+        for i in range(len(target_points)):
+            old_target_point = (target_points[i].x, target_points[i].y)
+            target_points[i].x = target_points[i].x + pose.x
+            target_points[i].y = target_points[i].y + pose.y
+            print("Target %d adjusted from %.2f, %.2f to %.2f, %.2f" % (i, old_target_point[0], old_target_point[1], target_points[i].x, target_points[i].y))
+
     cur_pose = pose
-    if first_pose is None:
-        first_pose = pose
 
-
+# Compute the difference in radians between 
 def get_needed_rotation(pose, target_point):
     angle_to_target = math.atan2(target_point.y - pose.y, target_point.x - pose.x)
     return angle_to_target - pose.theta
 
+# Calculates what movement is necessary using a
+# rotate-then-translate method
 def calculate_movement(cur_pose, target_point):
-
     cmd_vel = Twist()
+
     needed_rotation = get_needed_rotation(cur_pose, target_point)
+    distance_to_target = math.hypot(target_point.x - cur_pose.x, target_point.y - cur_pose.y)
     hasArrived = False
+    print("Current pose: (%.2f, %.2f)@%.0d deg, needed rotation: %.0f deg, %.2f rad, distance: %.2f" % (cur_pose.x,  cur_pose.y, math.degrees(cur_pose.theta), math.degrees(needed_rotation), needed_rotation, distance_to_target))
 
-    if abs(needed_rotation) > math.pi * (180 * 3):
-        cmd_vel.angular.z = constrain(needed_rotation, -1, 1)
-        print("Rotating by %02f to direct towards %02f, %02f" % (cmd_vel.angular.z, target_point.x, target_point.y))
-        
-    elif math.hypot(target_point.x - cur_pose.x, target_point.y - cur_pose.y) > 0:
-        cmd_vel.linear.x = 1
-        print("Heading forward to %02f, %02f" % (target_point.x, target_point.y))
+    # Rotate first if we're not heading in the right direction
+    if abs(needed_rotation) > ANGLE_THRESHOLD and distance_to_target > DISTANCE_THRESHOLD:
+        cmd_vel.angular.z = needed_rotation
+        print("Rotating by %.2f to direct towards %.2f, %.2f" % (cmd_vel.angular.z, target_point.x, target_point.y))
+    
+    # If we're heading in the right direction, then move forward
+    elif distance_to_target > DISTANCE_THRESHOLD:
+        cmd_vel.linear.x = distance_to_target
+        print("Heading forward to %.2f, %.2f" % (target_point.x, target_point.y))
 
+    # If we've arrived at a point, let the caller know so next target
+    # point can be queued up!
     else:
         hasArrived = True
-        print("Arrived at %02f, %02f, heading to next target point" % (target_point.x, target_point.y))
+        print("ARRIVED AT %.2f, %.2f" % (target_point.x, target_point.y))
 
     return (hasArrived, cmd_vel)
 
@@ -95,7 +97,7 @@ def calculate_movement(cur_pose, target_point):
 def main():
     target_point_i = 0
     publisher = rospy.Publisher("/turtle1/cmd_vel", Twist, queue_size=1)
-    subscriber = rospy.Subscriber("/turtle1/pose", Pose, callback=pose_callback)
+    rospy.Subscriber("/turtle1/pose", Pose, callback=pose_callback)
     
     rate = rospy.Rate(1)
     
@@ -104,12 +106,17 @@ def main():
         cmd_vel = Twist()
         hasArrived = False
 
+        # Only perform a movement if we've located our initial position
+        # (and we're not done going through our target points)
         if cur_pose is not None and target_point_i < len(target_points):
+            print("  target i: %d" % target_point_i)
             target_point = target_points[target_point_i]
             (hasArrived, cmd_vel) = calculate_movement(cur_pose, target_point)        
 
         if hasArrived:
+            print("ARRIVED AT POINT %d, NOW HEADING TO POINT %d" % (target_point_i, target_point_i+1))
             target_point_i += 1
+
 
         publisher.publish(cmd_vel)
         rate.sleep()

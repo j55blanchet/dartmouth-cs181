@@ -1,0 +1,8 @@
+<launch>
+    <!-- Turtlesim Node-->
+    <node pkg="turtlesim" type="turtlesim_node" name="sim"/>
+
+    <node name="task1_simple" pkg="homework1" type="task1_simple.py" respawn="false" output="screen" >
+          <param name="radius" type="double" value="2" />
+    </node>
+  </launch>

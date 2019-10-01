@@ -4,15 +4,15 @@ By Julien Blanchet
 
 
 ### Setting Up
-1. Initialize the catkin repository (`cd catkin_ws`, then run `catkin_make` )
-1. Source setup.bash with `source devel/setup.bash`
-1. Start ROS `roscore`
-1. Start the turtle simulator `rosrun turtlesim turtlesim_node`
+1. `cd catkin_ws`
+1. `catkin_make` )
+1. `source devel/setup.bash`
+1. `roscore`
 
 ### Running
-* Task #1: `rosrun blanchet_cs181_homework1 task1.py <desired_r>`, where `<desired_r>` is the desired radius of the trapazoid, in meters
-* Task #2: `rosrun blanchet_cs181_homework1 task2.py`
-* Task #3: `rosrun blanchet_cs181_homework1 task3.py`
+* **Task #1**: `roslaunch homework1 task1.launch` (to specify radius, edit `src/homework1/launch/task1.launch`)
+* **Task #2**: `rosrun blanchet_cs181_homework1 task2.py`
+* **Task #3**: `rosrun blanchet_cs181_homework1 task3.py`
 
 
 ### Sources Used
