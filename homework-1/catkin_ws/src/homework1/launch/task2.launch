@@ -2,7 +2,7 @@
     <!-- Turtlesim Node-->
     <node pkg="turtlesim" type="turtlesim_node" name="sim"/>
 
-    <node name="task2_simple" pkg="homework1" type="task2_simple.py" respawn="false" output="screen" >
+    <node name="task2" pkg="homework1" type="task2.py" respawn="false" output="screen" >
           <param name="radius" type="double" value="2" />
     </node>
   </launch>

@@ -22,7 +22,7 @@ target_points = []     # The target points of the trapazoid, in the reference fr
 # Starts the node and processes the parameter
 def init():
     global target_points
-    rospy.init_node("homework1_driver")
+    rospy.init_node("task3")
     
     # Get trapazoid radius based off of launch parameter
     trapazoid_radius = float(rospy.get_param('~radius'))

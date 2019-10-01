@@ -11,7 +11,7 @@ from geometry_msgs.msg import Twist
 
 # Starts the node and processes the parameter
 def init():
-    rospy.init_node("task2_simple")
+    rospy.init_node("task2")
 
 def rotate(publisher, rate, ang):
     print("Rotating %.0f degrees" % math.degrees(ang))

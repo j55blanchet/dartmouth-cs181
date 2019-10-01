@@ -15,7 +15,7 @@ TRAPAZOID_ANGLED_SIDES_FACTOR = math.sqrt(2 - math.sqrt(2))
 
 # Starts the node and processes the parameter
 def init():
-    rospy.init_node("task1_simple")
+    rospy.init_node("task1")
 
 def rotate(publisher, rate, ang):
     print("Rotating %.0f degrees" % math.degrees(ang))
