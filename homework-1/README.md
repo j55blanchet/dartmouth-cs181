@@ -10,9 +10,9 @@ By Julien Blanchet
 1. `roscore`
 
 ### Running
+Note: no need to manually run `rosrun turtlesim turtlesim_node`, it'll be launched automatically as part of the launch file.
+* **Task #1 (simplist implementation)**: `roslaunch homework1 task1_simple.launch`
 * **Task #1**: `roslaunch homework1 task1.launch` (to specify radius, edit `src/homework1/launch/task1.launch`)
-* **Task #2**: `rosrun blanchet_cs181_homework1 task2.py`
-* **Task #3**: `rosrun blanchet_cs181_homework1 task3.py`
 
 
 ### Sources Used
