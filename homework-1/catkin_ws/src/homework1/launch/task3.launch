@@ -2,8 +2,7 @@
     <!-- Turtlesim Node-->
     <node pkg="turtlesim" type="turtlesim_node" name="sim"/>
 
-    <node name="task3" pkg="homework1" type="task3.py" respawn="false" output="screen" >
-      <param name="radius" type="double" value="2" />
-      <param name="polylyine" type="array" value=""/>
+    <node name="task3" pkg="homework1" type="task3.py" respawn="false" output="screen" cwd="node" >
+      <param name="polyline_file" type="string" value="task3_input.json"/>
     </node>
   </launch>
