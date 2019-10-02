@@ -12,7 +12,10 @@ By Julien Blanchet, 10/2/2019
 Note: no need to manually run `rosrun turtlesim turtlesim_node`, it'll be launched automatically as part of the launch file.
 * **Task #1**: `roslaunch homework1 task1.launch`
 * **Task #2**: `roslaunch homework1 task2.launch`
-* **Task #3**: `roslaunch homework1 task3.launch`
+* **Task #3**: You can choose several shapes! Feel free to edit the json to configure the path for the turtle to follow.
+  * `roslaunch homework1 task3.rectangle.launch`
+  * `roslaunch homework1 task3.spiral.launch`
+  * `roslaunch homework1 task3.trapazoid.launch`
 
 
 ### Sources Consulted
