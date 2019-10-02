@@ -30,12 +30,13 @@ def translate(publisher, rate, dist):
     cmd_vel.linear.x = dist
     publisher.publish(cmd_vel)
     rate.sleep()
-    rate.sleep()
 
 def main():
     publisher = rospy.Publisher("/turtle1/cmd_vel", Twist, queue_size=1)
     trapazoid_radius = rospy.get_param('~radius', default=2)
 
+    # This rate must be >= 1, or else the robot won't have time 
+    # to complete a turn before the next command is sent.
     rate = rospy.Rate(1)
     rate.sleep()
 
