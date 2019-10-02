@@ -14,7 +14,7 @@ def init():
     rospy.init_node("task2")
 
 def rotate(publisher, rate, ang):
-    print("Rotating %.0f degrees" % math.degrees(ang))
+    print("Rotating %.1f degrees" % math.degrees(ang))
     move(publisher, rate, 0, ang)
     
 def translate(publisher, rate, dist):
@@ -31,7 +31,7 @@ def move(publisher, rate, x_vel, z_rotate):
 def main():
     publisher = rospy.Publisher("/turtle1/cmd_vel", Twist, queue_size=1)
 
-    rate = rospy.Rate(1)
+    rate = rospy.Rate(0.9)
     rate.sleep()
 
     semicircle_radius = rospy.get_param('~radius', default=2)
