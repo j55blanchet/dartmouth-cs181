@@ -5,6 +5,7 @@ from __future__ import division
 
 import sys
 import math
+from math import sin, cos, atan2
 import json
 import os
 
@@ -109,30 +110,46 @@ def initial_printout(target_points):
     print("=== INITIAL PRINTOUT ===")
     p1 = target_points[0]
     p2 = target_points[1]
-    theta = math.atan2(p2.y - p1.y, p2.x - p1.x)
-    print("p1: (%0.2f, %0.2f)    p2:(%0.2f, %0.2f)    theta: %0.3f rad (%.1f deg)" %(p1.x, p1.y, p2.x, p2.y, theta, math.degrees(theta)))
-    transformation_matrix = numpy.matrix(
-        [[math.cos(theta), -math.sin(theta), p1.x],
-         [math.sin(theta), math.cos(theta),  p1.y],
+    theta = atan2(p2.y - p1.y, p2.x - p1.x)
+    print("First Point: (%0.2f, %0.2f)\npSecond Point: (%0.2f, %0.2f)\n --> X-axis rotation (theta): %0.3f rad (%.1f deg)" %(p1.x, p1.y, p2.x, p2.y, theta, math.degrees(theta)))
+    print("")
+
+    transformation_matrix_from_local_to_world = numpy.matrix(
+        [[cos(theta), -sin(theta), p1.x],
+         [sin(theta), cos(theta),  p1.y],
          [0,               0,                1   ]]
     )
+
+    rotation_matrix_from_world_to_local = numpy.matrix([
+        [cos(theta),  sin(theta)],
+        [-sin(theta), cos(theta)]
+    ])
+
+    translation_component_from_world_to_local = -rotation_matrix_from_world_to_local * numpy.matrix([[p1.x], [p1.y]])
+    transformation_matrix_from_world_to_local = numpy.matrix(
+        [[rotation_matrix_from_world_to_local.item(0, 0),  rotation_matrix_from_world_to_local.item(0, 1),  translation_component_from_world_to_local.item(0)],
+         [rotation_matrix_from_world_to_local.item(1, 0),  rotation_matrix_from_world_to_local.item(1, 1),  translation_component_from_world_to_local.item(1)],
+         [                                             0,                                               0,                                                  1]]
+    )
+
+    print("Translation Matrix (local -> world):\n", transformation_matrix_from_local_to_world)
+    print("")
+    print("Translation Matrix (world -> local):\n", transformation_matrix_from_world_to_local)
+    print("")
 
     i = 0
     for p in target_points:
         vector_p = numpy.matrix([[p.x], [p.y], [1]])
-        transformed_p = transformation_matrix * vector_p
-        print("Point %02d. World: %0.2f, %0.2f --> Local: %0.2f, %0.2f" % (i, p.x, p.y, transformed_p.item(0), transformed_p.item(1)))
+        transformed_p = transformation_matrix_from_world_to_local * vector_p
+        back_again_p = transformation_matrix_from_local_to_world * transformed_p
+        print("Point #%02d. Data (World): %0.2f, %0.2f --> Local: %0.2f, %0.2f --> Back (World): %0.2f, %0.2f" % 
+                (i, p.x, p.y, transformed_p.item(0), transformed_p.item(1), back_again_p.item(0), back_again_p.item(1)))
         i += 1
-    print("Translation Matrix:\n", transformation_matrix)
 
     print("========================")
     print("Will now wait for 10 seconds to give you a chance to read this")
     rospy.sleep(10)
     print("========================\n")
-
-
-
-
 
 def main(initial_pose, target_points):
 
