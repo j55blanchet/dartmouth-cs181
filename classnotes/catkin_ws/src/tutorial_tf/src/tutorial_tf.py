@@ -5,6 +5,7 @@ from __future__ import print_function, division
 import rospy
 from sensor_msgs.msg import LaserScan
 import tf
+from numpy import matrix
 
 def laser_callback(msg):
     print(msg.header.stamp.to_sec())
