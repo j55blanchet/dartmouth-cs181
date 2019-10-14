@@ -1,0 +1,8 @@
+<launch>
+    <!-- Turtlesim Node-->
+    <node pkg="turtlebot_simulator" type="turtlesim_node" name="sim"/>
+
+    <node name="task3" pkg="homework1" type="task3.py" respawn="false" output="screen" cwd="node" >
+      <param name="polyline_file" type="string" value="task3.spiral.json"/>
+    </node>
+  </launch>
