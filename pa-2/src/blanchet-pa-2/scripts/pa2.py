@@ -17,7 +17,7 @@ class Constants:
     DERIVITIVE_GAIN = 20.0
     TARGET_DIST = 0.5
     
-    WALL_FOLLOW_CONE_ANGLE = math.pi * 2 / 3 # 120 deg
+    WALL_FOLLOW_CONE_ANGLE = math.pi / 2 # 90 deg
 
     # Parameters controlling when to stop for obstacles
     #   * If an obstacle is detecting in the front 60 deg of
@@ -54,11 +54,9 @@ class Utils:
             List[float] -- Readings that fall within the angles specified
         """
         if min_angle < scan_msg.angle_min:
-            print("WARNING: Specified min_angle (%0.2f) is beyond sensor angle_min (%0.2f)" % (min_angle, scan_msg.angle_min))
             min_angle = scan_msg.angle_min
         
         if max_angle > scan_msg.angle_max:
-            print("WARNING: Specified max angle (%0.2f) is beyond sensor angle_max (%0.2f)" % (max_angle, scan_msg.angle_max))
             max_angle = scan_msg.angle_max
 
         index_start = Utils.valmap(min_angle, scan_msg.angle_min, scan_msg.angle_max, 0, len(scan_msg.ranges) - 1)
@@ -168,7 +166,7 @@ class WallFollowerNode:
             self.lin_vel = Constants.LINEAR_VEL
 
         printVerbose("CONTROLLING")
-        printVerbose("\tDist(obstacle)=%0.2f (left)=%0.2f   (right)=%0.2f (min)=%0.2f" % (min_dist_obstacle, min_dist_left, min_dist_right, min_dist))
+        printVerbose("\tDist(obstacle)=%0.2f (left)=%0.2f   (right)=%0.2f (min)=%0.2f (ctl)=%0.2f" % (min_dist_obstacle, min_dist_left, min_dist_right, min_dist, ctl_min_dist))
         printVerbose("\tTarget=%0.2f         Error=%0.2f   Error(change)=%0.2f" % (Constants.TARGET_DIST, error, error_change))
         printVerbose("\tNetCtl=%0.2f         PropCtl=%0.2f  DerivCtl=%0.2f" % (control,prop_ctl, deriv_ctl))
         printVerbose("\tWallAffty=%s   AngVel=%0.2f   LinVel=%0.2f" % (WallFollowerNode.WallAffinity.get_string(self.wall_affinity), self.ang_vel, self.lin_vel))
