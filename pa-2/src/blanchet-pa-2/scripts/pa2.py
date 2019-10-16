@@ -3,22 +3,27 @@
 from __future__ import print_function
 import rospy
 import math
+import time
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from functools import reduce
 
 class Constants:
+    STARTUP_DELAY_SEC = 3
+
     RATE = 10
     LINEAR_VEL = 0.5
     PROPORTIONAL_GAIN = 3
     DERIVITIVE_GAIN = 20.0
-    TARGET_DIST = 0.6
+    TARGET_DIST = 0.5
     
+    WALL_FOLLOW_CONE_ANGLE = math.pi * 2 / 3 # 120 deg
+
     # Parameters controlling when to stop for obstacles
     #   * If an obstacle is detecting in the front 60 deg of
-    #     the robot withing 0.4m, the robot will stop
-    OBSTACLE_DETECTION_ANGLE_RANGE = math.pi / 3 # 60 degrees
-    OBSTACLE_DETECTION_STOP_DISTANCE = 0.4       # 0.4m
+    #     the robot withing 0.5m, the robot will stop
+    OBSTACLE_DETECTION_FRONT_CONE_ANGLE = math.pi / 3 # 60 degrees
+    OBSTACLE_DETECTION_STOP_DISTANCE = 0.5       # 0.5m
 
 is_verbose = True
 
@@ -48,8 +53,14 @@ class Utils:
         Returns:
             List[float] -- Readings that fall within the angles specified
         """
-        assert(min_angle >= scan_msg.angle_min)
-        assert(max_angle <= scan_msg.angle_max)
+        if min_angle < scan_msg.angle_min:
+            print("WARNING: Specified min_angle (%0.2f) is beyond sensor angle_min (%0.2f)" % (min_angle, scan_msg.angle_min))
+            min_angle = scan_msg.angle_min
+        
+        if max_angle > scan_msg.angle_max:
+            print("WARNING: Specified max angle (%0.2f) is beyond sensor angle_max (%0.2f)" % (max_angle, scan_msg.angle_max))
+            max_angle = scan_msg.angle_max
+
         index_start = Utils.valmap(min_angle, scan_msg.angle_min, scan_msg.angle_max, 0, len(scan_msg.ranges) - 1)
         index_end = Utils.valmap(max_angle, scan_msg.angle_min, scan_msg.angle_max, 0, len(scan_msg.ranges) - 1)
         return scan_msg.ranges[int(round(index_start)): int(round(index_end))]
@@ -116,15 +127,22 @@ class WallFollowerNode:
 
         # Calculate essential measurements
         range_mid_index = len(scan.ranges) / 2
-        obstacle_ranges = Utils.get_scan_within_angle(scan, -Constants.OBSTACLE_DETECTION_ANGLE_RANGE / 2, Constants.OBSTACLE_DETECTION_ANGLE_RANGE / 2)
+        front_ranges = Utils.get_scan_within_angle(scan, -Constants.OBSTACLE_DETECTION_FRONT_CONE_ANGLE / 2, Constants.OBSTACLE_DETECTION_FRONT_CONE_ANGLE / 2)
+        left_ranges = Utils.get_scan_within_angle(scan, math.pi / 2 - Constants.WALL_FOLLOW_CONE_ANGLE / 2, math.pi / 2 + Constants.WALL_FOLLOW_CONE_ANGLE / 2)
+        right_ranges = Utils.get_scan_within_angle(scan, -math.pi / 2 - Constants.WALL_FOLLOW_CONE_ANGLE / 2, -math.pi / 2 + Constants.WALL_FOLLOW_CONE_ANGLE / 2)
         min_dist = reduce(min, scan.ranges)
-        min_dist_obstacle = reduce(min, obstacle_ranges)
-        min_dist_right = reduce(min, scan.ranges[:range_mid_index])
-        min_dist_left = reduce(min, scan.ranges[range_mid_index:])
+        min_dist_obstacle = reduce(min, front_ranges)
+        min_dist_right = reduce(min, right_ranges)
+        min_dist_left = reduce(min, left_ranges)
         self.decide_wall_affinity(min_dist_left, min_dist_right, scan.range_max)
 
+        ctl_min_dist = min_dist
+        if self.wall_affinity == WallFollowerNode.WallAffinity.RIGHT:
+            ctl_min_dist = min_dist_right
+        elif self.wall_affinity == WallFollowerNode.WallAffinity.LEFT:
+            ctl_min_dist = min_dist_left
 
-        error = Constants.TARGET_DIST - min_dist
+        error = Constants.TARGET_DIST - ctl_min_dist
         error_change = error - self.last_error
         self.last_error = error
         
@@ -175,10 +193,13 @@ class WallFollowerNode:
             cmd_vel.linear.x = self.lin_vel
             cmd_vel.angular.z = self.ang_vel
             self.cmd_pub.publish(cmd_vel)
-            print("PUBLISHED_CMD. lin_vel: %0.2f   ang_vel: %0.2f" % (self.lin_vel, self.ang_vel))
             self.rate.sleep()
 
 if __name__ == "__main__":
+    
+    # Wait before starting everything to give the stage time to load the world
+    time.sleep(Constants.STARTUP_DELAY_SEC)
+
     is_verbose = rospy.get_param("verbose", True)
     followerNode = WallFollowerNode()
     followerNode.spin()
