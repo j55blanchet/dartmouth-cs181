@@ -7,6 +7,7 @@ Project Link: https://github.com/j55blanchet/dartmouth-cs181
 
 ## Description
 
+I tackled this problem in 2-main phases 
 
 ## Evaluation
 
