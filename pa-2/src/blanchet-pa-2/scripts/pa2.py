@@ -11,15 +11,15 @@ from functools import reduce
 class Constants:
     STARTUP_DELAY_SEC = 3
 
-    RATE = 30
-    LINEAR_VEL = 1
+    RATE = 20
+    LINEAR_VEL = 2
 
-    PROPORTIONAL_GAIN = 10
-    DERIVITIVE_GAIN = 20.0
+    PROPORTIONAL_GAIN = 2
+    DERIVITIVE_GAIN = 80.0
 
-    TARGET_DIST = 2
-    DANGER_STOP_DIST = 0.5
-    WARNING_SLOW_DIST =  2 * DANGER_STOP_DIST
+    TARGET_DIST = 0.5
+    DANGER_STOP_DIST = 0.5 + 0.25
+    WARNING_SLOW_DIST =  DANGER_STOP_DIST + 0.25
     
     WALL_FOLLOW_CONE_ANGLE = math.pi / 60 # 3 deg
 
@@ -30,11 +30,10 @@ class Constants:
     #   * If an obstacle is detecting in the front 60 deg of
     #     the robot withing 0.5m, the robot will stop
     OBSTACLE_DETECTION_FRONT_CONE_ANGLE = math.pi / 3 # 60 degrees
-    OBSTACLE_DETECTION_STOP_DISTANCE = 0.5       # 0.5m
 
-    BEHAVIOR_TURNIN_REQUIRED_RATIO = 1.2
-    BEHAVIOR_TURNOUT_REQUIRED_RATIO = 1
-    BEHAVIOR_TURN_BOOST = 1.0
+    BEHAVIOR_TURNIN_REQUIRED_RATIO = 1.4
+    BEHAVIOR_TURNOUT_REQUIRED_RATIO = 1.2
+    BEHAVIOR_TURN_BOOST = 1.5
     BEHAVIOR_WALLFIND_INITIAL_ANG_VEL = 1.5
 
 is_verbose = True
@@ -78,10 +77,11 @@ class WallFollowerNode:
         INITIALIZING =      0   # Robot is starting up; don't do anything yet
         FIND_WALL =         1   # Robot is too far away from any walls and will go in spirals until it finds a wall to follow
         FOLLOWING_WALL =    2   # Standard Mode: Following a wall. Wall affinity should be set at this point
-        TURN_IN =           3   # Robot is going around a corner and needs to turn into the wall
-        TURN_OUT =          4   # Robot is approaching a corner and needs to turn out from the wall
-        STOPPED_TURNIN =    5   # Robot is too close to something and needs to turn towards the wall it was following
-        STOPPED_TURNOUT =   6   # Robot is too close to something and needs to turn away from the wall it normally follows
+        FOLLOW_WALL_SLOW =  3   # Slow mode: Robot is following a wall, but an obstacle is approaching. Turn normally, but slow down forward momentum
+        TURN_IN =           4   # Robot is going around a corner and needs to turn into the wall
+        TURN_OUT =          5   # Robot is approaching a corner and needs to turn out from the wall
+        STOPPED_TURNIN =    6   # Robot is too close to something and needs to turn towards the wall it was following
+        STOPPED_TURNOUT =   7   # Robot is too close to something and needs to turn away from the wall it normally follows
         
 
         @staticmethod 
@@ -89,6 +89,7 @@ class WallFollowerNode:
             return {
                 WallFollowerNode.State.INITIALIZING: "INITIALIZING",
                 WallFollowerNode.State.FOLLOWING_WALL: "FOLLOWING_WALL",
+                WallFollowerNode.State.FOLLOW_WALL_SLOW: "FOLLOW_WALL_SLOW",
                 WallFollowerNode.State.TURN_IN: "TURN_IN",
                 WallFollowerNode.State.TURN_OUT: "TURN_OUT",
                 WallFollowerNode.State.STOPPED_TURNIN: "STOPPED_TURNIN",
@@ -163,7 +164,7 @@ class WallFollowerNode:
 
         # for left wall-affinity, we need to negate the angle readings to have positive
         # be towards the wall-side
-        if self.wall_affinity is WallFollowerNode.WallAffinity.LEFT:
+        if self.wall_affinity is WallFollowerNode.WallAffinity.RIGHT:
             min_angle = -min_angle
             max_angle = -max_angle
             if debugging:
@@ -231,6 +232,8 @@ class WallFollowerNode:
             self.state = WallFollowerNode.State.TURN_IN
         elif fw_dist < Constants.BEHAVIOR_TURNOUT_REQUIRED_RATIO * Constants.TARGET_DIST:
             self.state = WallFollowerNode.State.TURN_OUT
+        elif fw_dist < Constants.WARNING_SLOW_DIST:
+            self.state = WallFollowerNode.State.FOLLOW_WALL_SLOW
         else:
             self.state = WallFollowerNode.State.FOLLOWING_WALL 
         
@@ -257,7 +260,8 @@ class WallFollowerNode:
         if self.wall_affinity is WallFollowerNode.WallAffinity.RIGHT:
             turn_in_sign = -1
         
-        ang_vel = control * turn_in_sign
+        control *= turn_in_sign
+        ang_vel = control
         lin_vel = Constants.LINEAR_VEL
 
         if self.state is WallFollowerNode.State.FIND_WALL:
@@ -270,12 +274,12 @@ class WallFollowerNode:
         elif self.state is WallFollowerNode.State.TURN_IN:
             if ang_vel < 0:
                 printVerbose("WARRRRRNINGGGG: control is trying to turn OUT during TURN_IN state")
-            ang_vel *= 2
+            ang_vel += Constants.BEHAVIOR_TURN_BOOST * turn_in_sign
 
         elif self.state is WallFollowerNode.State.TURN_OUT:
             if ang_vel > 0:
                 printVerbose("WARRRRRNINGGGG: control is trying to turn IN during TURN_OUT state")
-            ang_vel *= 2
+            ang_vel -= Constants.BEHAVIOR_TURN_BOOST * turn_in_sign
 
         elif self.state is WallFollowerNode.State.STOPPED_TURNIN:
             if ang_vel < 0:
@@ -285,6 +289,9 @@ class WallFollowerNode:
         elif self.state is WallFollowerNode.State.STOPPED_TURNOUT:
             ang_vel = -Constants.BEHAVIOR_TURN_BOOST * turn_in_sign
             lin_vel = 0
+        
+        elif self.state is WallFollowerNode.State.FOLLOW_WALL_SLOW:
+            lin_vel /= 2
 
         printVerbose("CONTROLLING")
         # printVerbose("\tDist(obstacle)=%0.2f (left)=%0.2f   (right)=%0.2f (min)=%0.2f (ctl)=%0.2f" % (min_dist_obstacle, min_dist_left, min_dist_right, min_dist, ctl_min_dist))
