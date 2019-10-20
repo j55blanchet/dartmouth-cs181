@@ -1,6 +1,10 @@
 <launch>
     <!-- World Node-->
+    <!-- Use `rosrun stage_ros stageros src/blanchet-pa-2/2017-02-11-00-31-57.world` to run it manually -->
     <node pkg="stage_ros" type="stageros" name="sim" args="-d $(find blanchet-pa-2)/2017-02-11-00-31-57.world"/>
 
-    <node name="WallFollowerNode" pkg="blanchet-pa-2" type="pa2.py" respawn="false" output="screen" />
+    <!-- Use `rosrun blanchet-pa-2 pa2.py` to run it manually-->
+    <node name="WallFollowerNode" pkg="blanchet-pa-2" type="pa2.py" respawn="false" output="screen" >
+        <param name="startDelay" type="int" value="3" />
+    </node>
 </launch>

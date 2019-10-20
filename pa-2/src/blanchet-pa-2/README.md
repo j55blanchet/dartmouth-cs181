@@ -11,7 +11,6 @@ By Julien Blanchet, 10/2/2019
 ### Running
   * `roslaunch blanchet-pa-2 pa2.launch`
   
-
 ### Sources Consulted
 * Class notes / materials
 * Wrapping a print statement: https://stackoverflow.com/questions/26286203/custom-print-function-that-wraps-print

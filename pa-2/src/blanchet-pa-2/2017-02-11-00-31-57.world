@@ -35,19 +35,19 @@ floorplan
   pose [  33.2  46.0 0.0 0.0 ]
 )
 
-# # throw in a robot
-# turtlebot
-# (
-#   pose [ 51.0 3.0 0.0 0.0 ]
-#   name "turtlebot1"
-#   color "blue"
-# )
+ # throw in a robot
+ turtlebot
+ (
+   pose [ 51.0 3.0 0.0 0.0 ]
+   name "turtlebot1"
+   color "blue"
+ )
 
-# throw in a robot
-turtlebot
-(
-  pose [ 52.0 3.5 0.0 0.0 ]
-  name "turtlebot2"
-  color "red"
-)
+## throw in a robot
+#turtlebot
+#(
+#  pose [ 52.0 3.5 0.0 0.0 ]
+#  name "turtlebot2"
+#  color "red"
+#)
 
