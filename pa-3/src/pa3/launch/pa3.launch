@@ -1,6 +1,6 @@
 <launch>
-    <!-- Use `rosrun map_server map_server maze.yaml` to run it manually -->
-    <node pkg="map_server" type="map_server" name="map_server" cwd="node" args="maze.yaml"/>
+    <!-- Use `rosrun map_server map_server path/to/maze.yaml` to run it manually -->
+    <node pkg="map_server" type="map_server" name="map_server" cwd="node" args="$(find pa3)/maze.yaml"/>
 
     <!-- Use `rosrun pa3 pa3.py` to run it manually-->
     <node name="pa3" pkg="pa3" type="pa3.py" respawn="false" output="screen" />

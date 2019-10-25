@@ -1,11 +1,21 @@
 #!/usr/bin/env python
-
+#
+# 
+# Online Documentation Links
+#   
+#   All Visualization Messages: http://wiki.ros.org/visualization_msgs
+#   Marker: http://docs.ros.org/api/visualization_msgs/html/msg/Marker.html
+#   Point: http://docs.ros.org/melodic/api/geometry_msgs/html/msg/Point.html
+#   OccupancyGrid: http://docs.ros.org/kinetic/api/nav_msgs/html/msg/OccupancyGrid.html
+#
+#
+#
 from __future__ import print_function, division
-
 import math
 import random
 import time
 from Queue import PriorityQueue
+from collections import namedtuple
 
 import rospy
 from nav_msgs.msg import OccupancyGrid
@@ -14,23 +24,20 @@ from std_msgs.msg import Header, ColorRGBA
 from visualization_msgs.msg import Marker
 from tf.transformations import quaternion_from_euler
 
-# Online Documentation Links
-#   
-#   All Visualization Messages: http://wiki.ros.org/visualization_msgs
-#   Marker: http://docs.ros.org/api/visualization_msgs/html/msg/Marker.html
-#   Point: http://docs.ros.org/melodic/api/geometry_msgs/html/msg/Point.html
-#   OccupancyGrid: http://docs.ros.org/kinetic/api/nav_msgs/html/msg/OccupancyGrid.html
-
-
-# Utilities & Constants
-INITIALIZE_SLEEP_TIME = rospy.Duration(secs=1)
+OCCUPANCY_THRESHOLD = 50
 GRID_FIND_TIMEOUT = 5 # in secs
 VISUALIZATION_PERSIST_TIME = rospy.Duration(secs=25)
+TEST_ADVANCE_DELAY = rospy.Duration(secs=1.0)
 POSE_VISUALIZATION_ADVANCE_RATE = 32 # in hz
 SQRT2 = math.sqrt(2)
 
+PATH_LINE_VIZ_ID = 0
 START_POINT_VIZ_ID = 1
 GOAL_POINT_VIZ_ID = 2
+
+########################################
+###          Implementation          ###
+########################################
 
 def format_point(point):
     return "(%0.3f, %0.3f)" % (point.x, point.y)
@@ -95,28 +102,95 @@ class Path:
             self.poses.append(pose)
             cell = back_pointers[cell]
             seq += 1
-            ppoint = point            
+            ppoint = point
+            # The start node will point to itself
+            if back_pointers[cell][0] is cell[0] and back_pointers[cell][1] is cell[1]:
+                break            
 
     def found(self):
         return len(self.poses) > 0
 
     def __str__(self):
         if self.found():
+            percent_of_euclid = ""
             euclid_dist = math.hypot(self.goal.x - self.start.x, self.goal.y - self.start.y)
-            return "<start=%s, goal=%s, euclid_dist-%0.2f path_dist=%0.2fm(%0.1f longer) steps:%d" % \
-                    (format_point(self.start), format_point(self.goal), euclid_dist, self.final_path_length, 100 * (self.final_path_length / euclid_dist - 1), len(self.poses))
+            if euclid_dist > 0:
+                percent_of_euclid = "(%0.0f%% of euclidian) " % (100 * self.final_path_length / euclid_dist)
+            return "<start=%s, goal=%s, euclid_dist-%0.2f path_dist=%0.2fm %ssteps:%d" % \
+                    (format_point(self.start), format_point(self.goal), euclid_dist, self.final_path_length, percent_of_euclid, len(self.poses))
         else:
             return "<no path found>"
 
+    def publish(self, marker_pub, pose_pub):
+        """Publish pose msgs describing this path, as well as visualization msgs.
+        
+        Arguments:
+            marker_pub {rospy.Publisher} -- Publisher for visualization_msgs/Marker messages
+            pose_pub {rospy.Pulisher} -- Published for geometry_msgs/PoseStamped messages
+        """
+        points = None
+        color = None
+        if self.found():
+            # Green path when found
+            points = [p.pose.position for p in self.poses]
+            color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
+        else:
+            # Red path between start and goal when not found
+            points = [self.start, self.goal]
+            color = ColorRGBA(1.0, 0, 0, 1.0)
+
+        # Add visualization to rviz
+        marker = Marker(
+                type=Marker.LINE_STRIP,
+                action=Marker.ADD,
+                id=PATH_LINE_VIZ_ID,
+                lifetime=VISUALIZATION_PERSIST_TIME,
+                scale=Vector3(0.035, 0.035, 0),
+                header=Header(frame_id='map'),
+                points=points,
+                color=color
+        )
+        marker_pub.publish(marker)
+
+        # Publish poses gradually (helps visualize progression)
+        rate = rospy.Rate(hz=POSE_VISUALIZATION_ADVANCE_RATE)
+        for stampedpose in reversed(self.poses):
+            pose_pub.publish(stampedpose)
+            rate.sleep()
+            if rospy.is_shutdown():
+                break
 
 class PathFinder:
     def __init__(self, grid):
-        self.marker_pub = rospy.Publisher("/visualization_marker", Marker, queue_size=20)
-        self.poseseq_pub = rospy.Publisher("/pose_sequence", PoseStamped, queue_size=1)
         self.grid = grid
 
-        # Give roscore enough time to connect publishers and subscribers
-        rospy.sleep(INITIALIZE_SLEEP_TIME)
+    def inputs_are_valid(self, start, goal):
+        """Determines if the start and goal points are valid input for a graph search
+        
+        Arguments:
+            start {Point} -- Starting point
+            goal {Point} -- Goal
+        
+        Returns:
+            bool -- True iff start and goal points are valid 
+        """
+        (start_col, start_row) = self.get_cell_for_point(start)
+        (goal_col, goal_row) = self.get_cell_for_point(goal)
+
+        if start_col < 0 or start_col >= self.grid.info.width or start_row < 0 or start_row >= self.grid.info.height or \
+           goal_col  < 0 or goal_col  >= self.grid.info.width or goal_row  < 0 or goal_row  >= self.grid.info.height:       
+            rospy.logwarn("No path could be found. Starting point %s or ending point %s were out of bounds" % (format_point(start), format_point(goal)))
+            return False
+
+        if self.is_occupied(start_col, start_row):
+            rospy.logwarn("No path could be found. Starting point %s is in an occupied cell" % format_point(start))
+            return False
+        
+        if self.is_occupied(goal_col, goal_row):
+            rospy.logwarn("No path could be found. Goal point %s is in an occupied cell" % format_point(goal))
+            return False
+
+        return True
 
     def find_path(self, start, goal):
         """Finds a path from the starting node to the goal node, based off an occupancy grid
@@ -132,42 +206,32 @@ class PathFinder:
         Returns:        
             [PoseStamped] -- A path (sequence of poses) that the robot should take to get to the destination (empty if this is impossible)
         """
-        (start_col, start_row) = self.get_cell_for_point(start)
-        (goal_col, goal_row) = self.get_cell_for_point(goal)
 
-        if start_col < 0 or start_col >= self.grid.info.width or start_row < 0 or start_row >= self.grid.info.height or \
-        goal_col  < 0 or goal_col  >= self.grid.info.width or goal_row  < 0 or goal_row  >= self.grid.info.height:       
-            rospy.logwarn("No path could be found. Starting point %s or ending point %s were out of bounds" % (format_point(start), format_point(goal)))
-            return Path.empty(self.grid, start, goal)
-
-        self.visualize_cell(start_col, start_row, ColorRGBA(0, 1.0, 1.0, 1.0), START_POINT_VIZ_ID)
-        self.visualize_cell(goal_col, goal_row, ColorRGBA(0, 0.7, 0, 1.0), GOAL_POINT_VIZ_ID)
-
-        if self.is_occupied(start_col, start_row):
-            rospy.logwarn("No path could be found. Starting point %s is in an occupied cell" % format_point(start))
-            return Path.empty(self.grid, start, goal)
-        
-        if self.is_occupied(goal_col, goal_row):
-            rospy.logwarn("No path could be found. Goal point %s is in an occupied cell" % format_point(goal))
-            return Path.empty(self.grid, start, goal)
-
-        if start_col is goal_col and start_row is goal_row:
-            rospy.loginfo("Start point %s and end point %s are in the same occupancy cell (%d, %d). Returning empty path" %(format_point(start), format_point(goal), start_col, start_row))
-            return Path.empty(self.grid, start, goal)
-            
         # This function uses an A* algorithm. 
         #   > The priority is calculated as cost(node) + heuristic(node).
         #   > cost(node) = path length from start to node
         #   > heuristic(node) = euclidian distance from node to goal
-
         #
         # Entries in the frontier are formatted as (priority, col, row, path_cost)
         #   > using a priority queue ensures that we'll always be processing the node
         #     with the lowest estimated total path cost (which is the priority)
+
+        if not self.inputs_are_valid(start, goal):
+            return Path.empty(grid, start, goal)
+
+        (start_col, start_row) = self.get_cell_for_point(start)
+        (goal_col, goal_row) = self.get_cell_for_point(goal)
+
+        if start_col is goal_col and start_row is goal_row:
+            rospy.loginfo("Start point %s and end point %s are in the same occupancy cell (%d, %d)" % (format_point(start), format_point(goal), start_col, start_row))
+            return Path(self.grid, {(goal_col, goal_row): (start_col, start_row)}, start, goal)
+            
         min_path_costs = {
             (start_col, start_row): 0
         }
-        back_pointers = {}
+        back_pointers = {
+            (start_col, start_row): (start_col, start_row)
+        }
 
         frontier = PriorityQueue()
         frontier.put((1, start_col, start_row, 0))
@@ -179,7 +243,7 @@ class PathFinder:
             if path_cost is not min_path_costs[(col, row)]:
                 continue
 
-            neighbors = self.get_empty_neighbors(col, row)
+            neighbors = self.get_unoccupied_neighbors(col, row)
 
             for (ncol, nrow, dcost) in neighbors:
                 npath_cost = path_cost + dcost
@@ -201,41 +265,7 @@ class PathFinder:
 
         return Path(self.grid, back_pointers, start, goal)
     
-    def publish_path(self, path):
-
-        points = None
-        color = None
-        if path.found():
-            # Green path when found
-            points = [p.pose.position for p in path.poses]
-            color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
-        else:
-            # Red path between start and goal when not found
-            points = [path.start, path.goal]
-            color = ColorRGBA(1.0, 0, 0, 1.0)
-
-        # Add visualization to rviz
-        marker = Marker(
-                type=Marker.LINE_STRIP,
-                action=Marker.ADD,
-                id=0,
-                lifetime=VISUALIZATION_PERSIST_TIME,
-                scale=Vector3(0.035, 0.035, 0),
-                header=Header(frame_id='map'),
-                points=points,
-                color=color
-        )
-        self.marker_pub.publish(marker)
-
-        # Publish poses gradually (helps visualize progression)
-        rate = rospy.Rate(hz=POSE_VISUALIZATION_ADVANCE_RATE)
-        for stampedpose in reversed(path.poses):
-            self.poseseq_pub.publish(stampedpose)
-            rate.sleep()
-            if rospy.is_shutdown():
-                break
-    
-    def get_empty_neighbors(self, col, row):
+    def get_unoccupied_neighbors(self, col, row):
         """Returns the neighbor cells in the form of (col, row, delta_cost) to the current cell, using 8-way connectivity"""
         neighbors = [
             (col - 1, row - 1, SQRT2), (col, row - 1, 1), (col + 1, row - 1, SQRT2),
@@ -249,42 +279,115 @@ class PathFinder:
         return get_cell_for_point(self.grid, p)
 
     def is_occupied(self, col, row):
-        return self.grid.data[col + self.grid.info.width * row] > 50
+        return self.grid.data[col + self.grid.info.width * row] > OCCUPANCY_THRESHOLD
 
     def get_point_for_cell(self, col, row):
         return get_point_for_cell(self.grid, col, row)
 
-    def visualize_cell(self, col, row, color, id):
-        marker = Marker(
-                type=Marker.SPHERE,
-                action=Marker.ADD,
-                id=id,
-                lifetime=VISUALIZATION_PERSIST_TIME,
-                scale=Vector3(0.3, 0.3, 0.0),
-                header=Header(frame_id='map'),
-                pose=Pose(position=self.get_point_for_cell(col, row), orientation=Quaternion()),
-                points=[self.get_point_for_cell(col, row)],
-                color=color
-        )
-        self.marker_pub.publish(marker)
+
+########################################
+###            Testing               ###
+########################################
+
+def visualize_point(marker_pub, point, color, id):
+    marker = Marker(
+            type=Marker.SPHERE,
+            action=Marker.ADD,
+            id=id,
+            lifetime=VISUALIZATION_PERSIST_TIME,
+            scale=Vector3(0.3, 0.3, 0.0),
+            header=Header(frame_id='map'),
+            pose=Pose(position=point, orientation=Quaternion()),
+            points=[point],
+            color=color
+    )
+    marker_pub.publish(marker)
+
+TestCase = namedtuple('TestCase', ['test_name', 'start', 'goal', 'shouldFind'])
+
+random_testcase_seq = 0
+def make_random_testcase(w, h):
+    global random_testcase_seq
+    start = Point(random.random() * w, random.random() * h, 0)
+    goal  = Point(random.random() * w, random.random() * h, 0)
+    random_testcase_seq += 1
+    return TestCase("Randomly Generated Test #" + str(random_testcase_seq), start, goal, None)
+
+test_cases = [
+    TestCase("Case #1: Should fail when start cell is occupied", Point(x=0.1, y=0.1), Point(x=5.5, y=5.5), False),
+    TestCase("Case #2: Should fail when goal cell is occupied", Point(x=0.7, y=0.7), Point(x=9.9, y=9.9), False),
+    TestCase("Case #3: Should fail when there is no path", Point(x=5, y=5), Point(x=9.9, y=5), False),
+    TestCase("Case #4: Should find when start point is end point", Point(x=5, y=5), Point(x=5, y=5), True),
+    TestCase("Case #5: Should find when start point is in same cell as end point", Point(x=5, y=5), Point(x=5.0001, y=5.0001), True),
+    TestCase("Case #6: Should find (Around edge)", Point(x=0.1, y=5), Point(x=9.9, y=5), True),
+    TestCase("Case #7: Should find (Short  Path)", Point(x=9, y=9.3), Point(x=8.8, y=9.1), True),
+    TestCase("Case #8: Should find (Medium Path)", Point(x=5.8, y=5.65), Point(x=2.76, y=8.8), True),
+    TestCase("Case #9: Should find (Long Path)", Point(x=1, y=8), Point(x=4.5, y=2.5), True),
+    TestCase("Case #10: Should find with points on edge of map", Point(x=0.02, y=0.9), Point(x=0.9, y=0.01), True),
+    TestCase("Case #11: Should fail with points off edge of map (negative)", Point(x=-1, y=5), Point(x=5, y=5), False),
+    TestCase("Case #12: Should fail with points off edge of map (past bounds)", Point(x=5, y=5), Point(x=5, y=15), False)
+]
+
+def run_test(pathfinder, test_case, marker_pub, pose_pub):
+    """Runs a test case and evaluates the outcome.
+    
+    Arguments:
+        pathfinder {PathFinder} -- Path finder to evaluate
+        test_case {TestCase} -- Test scenario to run
+        marker_pub {rospy.Publisher} -- Publisher for visualization messages
+        pose_pub {rospy.Publisher} -- Publisher for path (sequence of poses)
+    
+    Returns:
+        Int -- 0 on success, 1 on failure. 0 if test_case.shouldFind is unspecified
+    """
+
+    rospy.loginfo("Test case: " + test_case.test_name)
+    start = test_case.start
+    goal = test_case.goal
+    
+    visualize_point(marker_pub, start, ColorRGBA(0, 1.0, 1.0, 1.0), START_POINT_VIZ_ID)
+    visualize_point(marker_pub, goal, ColorRGBA(0, 0.7, 0, 1.0), GOAL_POINT_VIZ_ID)
+
+    rospy.loginfo("Searching for a path from %s to %s" % (format_point(start), format_point(goal)))
+    start_time = time.time()
+    path = pathfinder.find_path(start, goal)
+    elapsed_time = time.time() - start_time
+
+    rospy.loginfo("Took %0.4fs. Path find result: %s" % (elapsed_time, str(path)))
+    path.publish(marker_pub, pose_pub)
+
+    if test_case.shouldFind is not None and test_case.shouldFind is not path.found():
+        return 1
+    return 0
 
 if __name__ == "__main__":  
     rospy.init_node("path_finder")
 
+    marker_pub = rospy.Publisher("/visualization_marker", Marker, queue_size=20)
+    pose_pub = rospy.Publisher("/pose_sequence", PoseStamped, queue_size=1)
+    
     grid = rospy.wait_for_message("/map", OccupancyGrid, GRID_FIND_TIMEOUT)
     pathfinder = PathFinder(grid)
 
     w = grid.info.resolution * grid.info.width
     h = grid.info.resolution * grid.info.height
 
+    count_tests_failed = 0
+
+    for tc in test_cases:
+        result = run_test(pathfinder, tc, marker_pub, pose_pub)
+        count_tests_failed += result
+        rospy.loginfo("Test passed" if result is 0 else "Test Failed")
+        rospy.loginfo("")
+        rospy.sleep(TEST_ADVANCE_DELAY)
+        if rospy.is_shutdown():
+            exit(count_tests_failed)
+    
+    rospy.loginfo("%d/%d tests passed. Will commence random testing in 10 seconds" % (len(test_cases) - count_tests_failed, len(test_cases)))
+    rospy.loginfo("")
+    rospy.sleep(rospy.Duration(secs=10))
+
     while not rospy.is_shutdown():
-        start = Point(random.random() * w, random.random() * h, 0)
-        end = Point(random.random() * w, random.random() * h, 0)
-
-        rospy.loginfo("Finding a path from %s to %s" % (format_point(start), format_point(end)))
-        path = pathfinder.find_path(start, end)
-
-        rospy.loginfo("Path find result: %s" % str(path))
-        pathfinder.publish_path(path)
-
-        rospy.sleep(rospy.Duration(secs=3.0))
+        tc = make_random_testcase(w, h)
+        run_test(pathfinder, tc, marker_pub, pose_pub)
+        rospy.sleep(TEST_ADVANCE_DELAY)
