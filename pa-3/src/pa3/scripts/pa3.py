@@ -26,7 +26,7 @@ from tf.transformations import quaternion_from_euler
 INITIALIZE_SLEEP_TIME = rospy.Duration(secs=1)
 GRID_FIND_TIMEOUT = 5 # in secs
 VISUALIZATION_PERSIST_TIME = rospy.Duration(secs=25)
-POSE_VISUALIZATION_ADVANCE_RATE = 16 # in hz
+POSE_VISUALIZATION_ADVANCE_RATE = 32 # in hz
 SQRT2 = math.sqrt(2)
 
 START_POINT_VIZ_ID = 1
@@ -72,12 +72,10 @@ class Path:
         """
         self.poses = []
         self.final_path_length = 0
-
-        self._start = start
-        self._goal = goal
+        self.start = start
+        self.goal = goal
 
         cell = get_cell_for_point(grid, goal)
-        pcell = None
         ppoint = get_point_for_cell(grid, cell[0], cell[1])
         seq = 0
         while cell in back_pointers:
@@ -85,9 +83,7 @@ class Path:
             # Get pose position and angle (head towards the target point. Since we're iterating
             # from goal to start, the target point is the previous one we processed)
             point = get_point_for_cell(grid, cell[0], cell[1])
-            ang_yaw = 0
-            if pcell is not None:
-                ang_yaw = math.atan2(point.y - ppoint.y, point.x - ppoint.x)
+            ang_yaw = math.atan2(ppoint.y - point.y, ppoint.x - point.x)
             orientation = Quaternion(*quaternion_from_euler(0, 0, ang_yaw))
 
             self.final_path_length += math.hypot(point.x - ppoint.x, point.y - ppoint.y)
@@ -106,9 +102,9 @@ class Path:
 
     def __str__(self):
         if self.found():
-            euclid_dist = math.hypot(self._goal.x - self._start.x, self._goal.y - self._start.y)
+            euclid_dist = math.hypot(self.goal.x - self.start.x, self.goal.y - self.start.y)
             return "<start=%s, goal=%s, euclid_dist-%0.2f path_dist=%0.2fm(%0.1f longer) steps:%d" % \
-                    (format_point(self._start), format_point(self._goal), euclid_dist, self.final_path_length, 100 * (self.final_path_length / euclid_dist - 1), len(self.poses))
+                    (format_point(self.start), format_point(self.goal), euclid_dist, self.final_path_length, 100 * (self.final_path_length / euclid_dist - 1), len(self.poses))
         else:
             return "<no path found>"
 
@@ -207,6 +203,17 @@ class PathFinder:
     
     def publish_path(self, path):
 
+        points = None
+        color = None
+        if path.found():
+            # Green path when found
+            points = [p.pose.position for p in path.poses]
+            color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
+        else:
+            # Red path between start and goal when not found
+            points = [path.start, path.goal]
+            color = ColorRGBA(1.0, 0, 0, 1.0)
+
         # Add visualization to rviz
         marker = Marker(
                 type=Marker.LINE_STRIP,
@@ -215,8 +222,8 @@ class PathFinder:
                 lifetime=VISUALIZATION_PERSIST_TIME,
                 scale=Vector3(0.035, 0.035, 0),
                 header=Header(frame_id='map'),
-                points=[p.pose.position for p in path.poses],
-                color=ColorRGBA(0.0, 1.0, 0.0, 1.0)
+                points=points,
+                color=color
         )
         self.marker_pub.publish(marker)
 
